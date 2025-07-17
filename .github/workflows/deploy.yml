@@ -1,0 +1,49 @@
+name: Deploy to DreamHost
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.1'
+        extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, iconv, json, mbstring, openssl, pdo, tokenizer, xml, zip
+        coverage: xdebug
+        
+    - name: Install dependencies
+      run: composer install --no-dev --optimize-autoloader
+      
+    - name: Run tests
+      run: vendor/bin/phpunit --coverage-text
+      
+    - name: Create .env file
+      run: |
+        cp .env.example .env
+        php artisan key:generate
+        
+    - name: Deploy to DreamHost
+      uses: appleboy/ssh-action@v0.1.7
+      with:
+        host: iad1-shared-b8-01.dreamhost.com
+        username: adcall
+        key: ${{ secrets.DREAMHOST_SSH_KEY }}
+        port: 22
+        script: |
+          cd ~/videoconf.com
+          git pull origin main
+          composer install --no-dev --optimize-autoloader
+          php artisan migrate --force
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          sudo systemctl reload apache2
